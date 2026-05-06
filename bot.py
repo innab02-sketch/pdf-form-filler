@@ -36,7 +36,7 @@ BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 # Allowed users - only these Telegram user IDs can use the bot
 # Set via environment variable ALLOWED_USERS as comma-separated IDs
 # If empty, bot is open to everyone
-ALLOWED_USERS_STR = os.environ.get("ALLOWED_USERS", "8682972691")
+ALLOWED_USERS_STR = os.environ.get("ALLOWED_USERS", "256157841")
 ALLOWED_USERS = set()
 if ALLOWED_USERS_STR:
     ALLOWED_USERS = {int(uid.strip()) for uid in ALLOWED_USERS_STR.split(",") if uid.strip()}
