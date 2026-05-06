@@ -33,6 +33,14 @@ logger = logging.getLogger(__name__)
 # Bot token from environment variable
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 
+# Allowed users - only these Telegram user IDs can use the bot
+# Set via environment variable ALLOWED_USERS as comma-separated IDs
+# If empty, bot is open to everyone
+ALLOWED_USERS_STR = os.environ.get("ALLOWED_USERS", "8682972691")
+ALLOWED_USERS = set()
+if ALLOWED_USERS_STR:
+    ALLOWED_USERS = {int(uid.strip()) for uid in ALLOWED_USERS_STR.split(",") if uid.strip()}
+
 # Optional: Map Telegram user IDs to profiles for auto-detection
 # Format: {"user_id": "profile_name"}
 # Set via environment variable USER_PROFILE_MAP as JSON string
@@ -44,8 +52,22 @@ except (json.JSONDecodeError, TypeError):
     pass
 
 
+async def check_access(update: Update) -> bool:
+    """Check if user is allowed to use the bot."""
+    if not ALLOWED_USERS:
+        return True
+    user_id = update.effective_user.id
+    if user_id not in ALLOWED_USERS:
+        await update.message.reply_text("⛔ אין לך גישה לבוט זה.")
+        logger.warning(f"Unauthorized access attempt by user {user_id}")
+        return False
+    return True
+
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start command."""
+    if not await check_access(update):
+        return
     welcome_text = (
         "שלום! 👋\n\n"
         "אני בוט למילוי טפסי PDF אוטומטי.\n\n"
@@ -60,6 +82,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /help command."""
+    if not await check_access(update):
+        return
     help_text = (
         "📋 איך להשתמש בבוט:\n\n"
         "1. שלח/י קובץ PDF (טופס עם שדות ריקים)\n"
@@ -76,6 +100,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle received PDF files."""
+    if not await check_access(update):
+        return
     document = update.message.document
     
     # Verify it's a PDF
@@ -192,6 +218,8 @@ async def process_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE, profil
 
 async def handle_non_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle non-PDF messages."""
+    if not await check_access(update):
+        return
     await update.message.reply_text(
         "📄 אנא שלח/י קובץ PDF למילוי.\n"
         "לעזרה, שלח/י /help"
