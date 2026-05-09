@@ -117,7 +117,7 @@ Return ONLY the JSON array with no extra text or markdown."""
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4o-mini",
             messages=[
                 {
                     "role": "user",
@@ -259,7 +259,14 @@ def fill_pdf(input_pdf_path: str, profile_name: str) -> Optional[str]:
         return None
     
     profile = PROFILES[profile_name]
-    client = OpenAI()
+    
+    # Initialize OpenAI client with explicit API key
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        logger.error("OPENAI_API_KEY environment variable is not set!")
+        raise ValueError("Missing credentials. Please set the OPENAI_API_KEY environment variable.")
+    logger.info(f"OpenAI API key found: {api_key[:8]}...")
+    client = OpenAI(api_key=api_key)
     
     # Step 1: Convert PDF pages to images for AI analysis
     logger.info("Converting PDF to images...")
