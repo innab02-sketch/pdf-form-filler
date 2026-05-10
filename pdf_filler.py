@@ -1,6 +1,6 @@
 """
 PDF Form Filler Module
-Uses OpenAI Vision API to detect blank fields in flat PDFs,
+Uses Google Gemini Vision API to detect blank fields in flat PDFs,
 then overlays text using reportlab at the correct positions.
 Handles Hebrew (RTL) text properly.
 """
@@ -14,7 +14,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from openai import OpenAI
+import google.generativeai as genai
 from pdf2image import convert_from_path
 from PIL import Image
 from PyPDF2 import PdfReader, PdfWriter
@@ -53,27 +53,13 @@ def reshape_hebrew(text: str) -> str:
     return bidi_text
 
 
-def image_to_base64(image: Image.Image, max_size: int = 1800) -> str:
-    """Convert PIL Image to base64 string, resizing if needed."""
-    w, h = image.size
-    if max(w, h) > max_size:
-        ratio = max_size / max(w, h)
-        image = image.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
-    
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG", optimize=True)
-    return base64.b64encode(buffer.getvalue()).decode("utf-8")
-
-
-def analyze_page_with_ai(image: Image.Image, page_num: int, profile: dict, client: OpenAI) -> list:
+def analyze_page_with_ai(image: Image.Image, page_num: int, profile: dict, model) -> list:
     """
-    Use OpenAI Vision API to analyze a PDF page image and identify
+    Use Gemini Vision API to analyze a PDF page image and identify
     blank fields that should be filled with personal details.
     
     Returns a list of dictionaries with field placement info.
     """
-    img_base64 = image_to_base64(image)
-    
     profile_info = json.dumps(profile, ensure_ascii=False, indent=2)
     
     prompt = f"""You are analyzing page {page_num} of a Hebrew PDF form to find BLANK fields that need to be filled with personal details.
@@ -116,28 +102,9 @@ If there are NO blank fields to fill on this page, return exactly: []
 Return ONLY the JSON array with no extra text or markdown."""
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{img_base64}",
-                                "detail": "high"
-                            }
-                        }
-                    ]
-                }
-            ],
-            max_tokens=3000,
-            temperature=0.1
-        )
+        response = model.generate_content([prompt, image])
         
-        result_text = response.choices[0].message.content.strip()
+        result_text = response.text.strip()
         
         # Clean up the response - remove markdown code blocks if present
         if result_text.startswith("```"):
@@ -260,13 +227,15 @@ def fill_pdf(input_pdf_path: str, profile_name: str) -> Optional[str]:
     
     profile = PROFILES[profile_name]
     
-    # Initialize OpenAI client with explicit API key
-    api_key = os.environ.get("OPENAI_API_KEY")
+    # Initialize Gemini client
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        logger.error("OPENAI_API_KEY environment variable is not set!")
-        raise ValueError("Missing credentials. Please set the OPENAI_API_KEY environment variable.")
-    logger.info(f"OpenAI API key found: {api_key[:8]}...")
-    client = OpenAI(api_key=api_key)
+        logger.error("GEMINI_API_KEY environment variable is not set!")
+        raise ValueError("Missing credentials. Please set the GEMINI_API_KEY environment variable.")
+    logger.info(f"Gemini API key found: {api_key[:8]}...")
+    
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-2.0-flash')
     
     # Step 1: Convert PDF pages to images for AI analysis
     logger.info("Converting PDF to images...")
@@ -290,7 +259,7 @@ def fill_pdf(input_pdf_path: str, profile_name: str) -> Optional[str]:
         page_height = float(page_box.height)
         
         # Analyze the page with AI
-        fields = analyze_page_with_ai(image, page_num, profile, client)
+        fields = analyze_page_with_ai(image, page_num, profile, model)
         
         if fields:
             # Create overlay PDF with the text
